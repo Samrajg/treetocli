@@ -15,6 +15,12 @@
         justify-content: center;
         align-items: center;
         color: white;
+        transition: background 0.3s, color 0.3s;
+    }
+
+    body.light {
+        background: linear-gradient(135deg, #e0eafc, #cfdef3, #f0f4f8);
+        color: black;
     }
 
     .container {
@@ -25,6 +31,11 @@
         backdrop-filter: blur(15px);
         background: rgba(255, 255, 255, 0.08);
         box-shadow: 0 8px 32px rgba(0, 0, 0, 0.37);
+        transition: background 0.3s, color 0.3s;
+    }
+
+    body.light .container {
+        background: rgba(255, 255, 255, 0.6);
     }
 
     h1 {
@@ -49,6 +60,12 @@
         resize: none;
         background: rgba(255,255,255,0.1);
         color: white;
+        transition: background 0.3s, color 0.3s;
+    }
+
+    body.light textarea {
+        background: rgba(255,255,255,0.8);
+        color: black;
     }
 
     select, button {
@@ -62,6 +79,11 @@
     select {
         background: rgba(255,255,255,0.1);
         color: white;
+    }
+
+    body.light select {
+        background: rgba(0,0,0,0.1);
+        color: black;
     }
 
     button {
@@ -80,6 +102,7 @@
         margin-top: 15px;
         display: flex;
         gap: 10px;
+        flex-wrap: wrap;
     }
 
     .output {
@@ -89,19 +112,53 @@
         border-radius: 10px;
         font-family: monospace;
         white-space: pre-wrap;
-        min-height: 100px;
+        min-height: 120px;
+        position: relative;
+        overflow-x: auto;
+        transition: background 0.3s, color 0.3s;
     }
 
-    .copy-btn {
+    body.light .output {
+        background: rgba(255,255,255,0.8);
+        color: black;
+    }
+
+    .copy-btn, .download-btn, .theme-btn, .example-btn {
         margin-top: 10px;
+    }
+
+    .tooltip {
+        position: absolute;
+        top: -25px;
+        right: 10px;
         background: #28a745;
+        padding: 5px 10px;
+        border-radius: 5px;
+        font-size: 12px;
+        opacity: 0;
+        transition: opacity 0.3s;
+    }
+
+    .directory {
+        color: #00ffcc;
+    }
+
+    .file {
+        color: #ffff66;
+    }
+
+    body.light .directory {
+        color: #007bff;
+    }
+
+    body.light .file {
+        color: #ff6600;
     }
 
 </style>
 </head>
 
 <body>
-
 <div class="container">
     <h1>TreeToCLI</h1>
     <div class="tagline">From Tree View to Terminal in Seconds</div>
@@ -116,10 +173,16 @@
         </select>
 
         <button onclick="generate()">Generate Command</button>
+        <button class="theme-btn" onclick="toggleTheme()">Toggle Dark/Light</button>
+        <button class="example-btn" onclick="loadExample()">Load Example</button>
     </div>
 
-    <div class="output" id="output"></div>
+    <div class="output" id="output">
+        <div class="tooltip" id="tooltip">Copied!</div>
+    </div>
+
     <button class="copy-btn" onclick="copyCommand()">Copy Command</button>
+    <button class="download-btn" onclick="downloadCommand()">Download Script</button>
 </div>
 
 <script>
@@ -129,6 +192,7 @@ function generate() {
 
     let stack = [];
     let commands = [];
+    let coloredOutput = [];
 
     lines.forEach(line => {
         if (!line.trim()) return;
@@ -136,45 +200,87 @@ function generate() {
         // Remove tree symbols completely
         let cleanLine = line.replace(/[│├└─]/g, "");
 
-        // Count indentation (2 spaces = 1 level in your example)
-        let indent = Math.floor(cleanLine.match(/^\s*/)[0].length / 2);
+        // Count indentation dynamically (spaces or tabs)
+        let indent = 0;
+        let match = cleanLine.match(/^\s*/);
+        if(match) {
+            const spaces = match[0].replace(/\t/g, '    ').length;
+            indent = Math.floor(spaces / 2);
+        }
 
         cleanLine = cleanLine.trim();
-
-        // Adjust stack to current level
         stack = stack.slice(0, indent);
 
-        if (cleanLine.endsWith("/")) {
+        let command = "";
+        let isDir = cleanLine.endsWith("/");
+
+        if(isDir){
             stack.push(cleanLine.replace("/", ""));
             let fullPath = stack.join("/");
 
-            if (os === "linux") {
-                commands.push(`mkdir -p ${fullPath}`);
-            } else if (os === "windows") {
-                commands.push(`mkdir ${fullPath.replace(/\//g, "\\")}`);
-            } else {
-                commands.push(`New-Item -ItemType Directory ${fullPath.replace(/\//g, "\\")}`);
-            }
+            if (os === "linux") command = `mkdir -p "${fullPath}"`;
+            else if (os === "windows") command = `mkdir "${fullPath.replace(/\//g, "\\")}"`;
+            else command = `New-Item -ItemType Directory "${fullPath.replace(/\//g, "\\")}"`;
+
+            coloredOutput.push(`<span class="directory">${command}</span>`);
         } else {
             let fullPath = [...stack, cleanLine].join("/");
 
-            if (os === "linux") {
-                commands.push(`touch ${fullPath}`);
-            } else if (os === "windows") {
-                commands.push(`type nul > ${fullPath.replace(/\//g, "\\")}`);
-            } else {
-                commands.push(`New-Item -ItemType File ${fullPath.replace(/\//g, "\\")}`);
-            }
+            if (os === "linux") command = `touch "${fullPath}"`;
+            else if (os === "windows") command = `type nul > "${fullPath.replace(/\//g, "\\")}"`;
+            else command = `New-Item -ItemType File "${fullPath.replace(/\//g, "\\")}"`;
+
+            coloredOutput.push(`<span class="file">${command}</span>`);
         }
+
+        commands.push(command);
     });
 
-    document.getElementById("output").innerText = commands.join("\n");
+    const outputDiv = document.getElementById("output");
+    outputDiv.innerHTML = coloredOutput.join("<br>");
+    outputDiv.dataset.raw = commands.join("\n");
 }
 
 function copyCommand() {
-    const output = document.getElementById("output").innerText;
+    const output = document.getElementById("output").dataset.raw || "";
     navigator.clipboard.writeText(output);
-    alert("Command copied to clipboard!");
+
+    const tooltip = document.getElementById("tooltip");
+    tooltip.style.opacity = "1";
+    setTimeout(() => { tooltip.style.opacity = "0"; }, 1000);
+}
+
+function downloadCommand() {
+    const output = document.getElementById("output").dataset.raw || "";
+    const os = document.getElementById("os").value;
+
+    let filename = "setup";
+    let extension = "";
+
+    if(os === "linux") extension = ".sh";
+    else if(os === "windows") extension = ".bat";
+    else extension = ".ps1";
+
+    const blob = new Blob([output], {type: "text/plain"});
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = filename + extension;
+    a.click();
+}
+
+function toggleTheme() {
+    document.body.classList.toggle("light");
+}
+
+function loadExample() {
+    const example = `project/
+ ├── backend/
+ │    ├── main.py
+ │    └── requirements.txt
+ ├── frontend/
+ │    └── index.html
+ └── README.md`;
+    document.getElementById("structure").value = example;
 }
 </script>
 
